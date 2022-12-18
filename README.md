@@ -10,5 +10,5 @@ make build ARCH=x86-64-modern
 
 ## Run
 ```{bash}
-./stockfish [color = 'white' | 'black']
+./stockfish [color = white | black]
 ```
