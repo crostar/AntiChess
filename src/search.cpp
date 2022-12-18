@@ -196,9 +196,9 @@ void MainThread::search() {
   if (rootMoves.empty())
   {
       rootMoves.emplace_back(MOVE_NONE);
-      sync_cout << "info depth 0 score "
-                << UCI::value(rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW)
-                << sync_endl;
+    //   sync_cout << "info depth 0 score "
+    //             << UCI::value(rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW)
+    //             << sync_endl;
   }
   else
   {
@@ -1856,8 +1856,8 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
          << " multipv "  << i + 1
          << " score "    << UCI::value(v);
 
-      if (Options["UCI_ShowWDL"])
-          ss << UCI::wdl(v, pos.game_ply());
+    //   if (Options["UCI_ShowWDL"])
+    //       ss << UCI::wdl(v, pos.game_ply());
 
       if (!tb && i == pvIdx)
           ss << (v >= beta ? " lowerbound" : v <= alpha ? " upperbound" : "");

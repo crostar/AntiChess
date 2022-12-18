@@ -22,6 +22,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <ctime>
 
 #include "evaluate.h"
 #include "movegen.h"
@@ -37,8 +38,6 @@ using namespace std;
 
 namespace Stockfish {
 
-extern vector<string> setup_bench(const Position&, istream&);
-
 namespace {
 
   // FEN string for the initial position in standard chess
@@ -49,15 +48,12 @@ namespace {
     auto captureMoves = MoveList<CAPTURES>(pos);
     auto legalMoves = MoveList<LEGAL>(pos);
 
-    // sync_cout << "Capture moves: " << sync_endl;
     for (const auto& m : captureMoves) {
-        // sync_cout << UCI::move(m, false) << sync_endl;
         if (legalMoves.contains(m)) 
             rootMoves.emplace_back(m);
     }
 
     if (rootMoves.empty() && captureMoves.size() != 0) {
-        // If the only available move is "suicide", then we can terminate early
         return captureMoves.begin()->move;
     }
 
@@ -65,10 +61,6 @@ namespace {
         for (const auto& m : MoveList<LEGAL>(pos))
             rootMoves.emplace_back(m);
 
-    // sync_cout << "Root moves: " << sync_endl;
-    // for (auto m : rootMoves) {
-        // sync_cout << UCI::move(m.pv.front(), false) << sync_endl;
-    // }
     int moveIndex = rand() % rootMoves.size();
 
     return rootMoves.empty() ? MOVE_NONE : rootMoves[moveIndex].pv[0];
@@ -76,64 +68,25 @@ namespace {
 
   void make_initial_move(Position& pos, StateListPtr& states) {
     Move initial_move = start_thinking(pos);
-    // sync_cout << "bestmove " << UCI::move(initial_move, false) << sync_endl;
     sync_cout << UCI::move(initial_move, false) << sync_endl;
     states->emplace_back();
     pos.do_move(initial_move, states->back());
-    // sync_cout << pos << sync_endl;
   }
 
-  // antiChess() is called when the engine receives a move string (e.g. d2d4)
+  // move_and_counter() is called when the engine receives a move string (e.g. d2d4)
   // It makes the move from the current position and calculate the best response move
-  void antiChess(Position& pos, Move m, StateListPtr& states) {
+  void move_and_counter(Position& pos, Move m, StateListPtr& states) {
     // Make the current move
     states = StateListPtr(new std::deque<StateInfo>(1)); // Drop the old state and create a new one
     pos.set(pos.fen(), Options["UCI_Chess960"], &states->back(), Threads.main());
     states->emplace_back();
     pos.do_move(m, states->back());
-    // sync_cout << pos << sync_endl;
-
-    // ofstream testf("test.txt", std::ios_base::app);
-    // if (testf.is_open())
-    //     testf << UCI::move(m, false) << endl;
-    // testf.close();
 
     Move best_move = start_thinking(pos);
-    // if (best_move == MOVE_NONE) sync_cout << "Game End" << sync_endl;
-    // sync_cout << "bestmove " << UCI::move(best_move, false) << sync_endl;
     sync_cout << UCI::move(best_move, false) << sync_endl;
     states->emplace_back();
     pos.do_move(best_move, states->back());
-    // sync_cout << pos << sync_endl;
-
-    // Hint on possible capture moves:
-    // sync_cout << "Possible capture moves:" << sync_endl;
-    // for (const auto& cm : MoveList<CAPTURES>(pos))
-        // sync_cout << UCI::move(cm, pos.is_chess960()) << sync_endl;
   }
-
-  // The win rate model returns the probability of winning (in per mille units) given an
-  // eval and a game ply. It fits the LTC fishtest statistics rather accurately.
-  int win_rate_model(Value v, int ply) {
-
-     // The model only captures up to 240 plies, so limit the input and then rescale
-     double m = std::min(240, ply) / 64.0;
-
-     // The coefficients of a third-order polynomial fit is based on the fishtest data
-     // for two parameters that need to transform eval to the argument of a logistic
-     // function.
-     double as[] = { 0.50379905,  -4.12755858,  18.95487051, 152.00733652};
-     double bs[] = {-1.71790378,  10.71543602, -17.05515898,  41.15680404};
-     double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
-     double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
-
-     // Transform the eval to centipawns with limited range
-     double x = std::clamp(double(100 * v) / PawnValueEg, -2000.0, 2000.0);
-
-     // Return the win rate in per mille units rounded to the nearest value
-     return int(0.5 + 1000 / (1 + std::exp((a - x) / b)));
-  }
-
 } // namespace
 
 
@@ -149,9 +102,8 @@ void UCI::loop(int argc, char* argv[]) {
   string token, cmd;
   StateListPtr states(new std::deque<StateInfo>(1));
   Move m;
-  std::ofstream outfile("test.txt", std::ios_base::trunc);
-  outfile.close();
 
+  srand(time(nullptr));
   pos.set(StartFEN, false, &states->back(), Threads.main());
 
   std::string us = std::string(argv[1]);
@@ -169,9 +121,9 @@ void UCI::loop(int argc, char* argv[]) {
       is >> skipws >> token;
 
       if (token == "white" || token == "black") std::cout << "skip" << std::endl;
-      else if ((m = UCI::to_antichess_move(pos, token)) != MOVE_NONE) antiChess(pos, m, states);
+      else if ((m = UCI::to_antichess_move(pos, token)) != MOVE_NONE) move_and_counter(pos, m, states);
       else if (!token.empty() && token[0] != '#')
-          sync_cout << "Unknown command: '" << cmd << "'. Type help for more information." << sync_endl;
+          sync_cout << "Unknown command: '" << cmd << sync_endl;
 
   } while (token != "quit"); // The command-line arguments are one-shot
 }
@@ -196,23 +148,6 @@ string UCI::value(Value v) {
 
   return ss.str();
 }
-
-
-/// UCI::wdl() reports the win-draw-loss (WDL) statistics given an evaluation
-/// and a game ply based on the data gathered for fishtest LTC games.
-
-string UCI::wdl(Value v, int ply) {
-
-  stringstream ss;
-
-  int wdl_w = win_rate_model( v, ply);
-  int wdl_l = win_rate_model(-v, ply);
-  int wdl_d = 1000 - wdl_w - wdl_l;
-  ss << " wdl " << wdl_w << " " << wdl_d << " " << wdl_l;
-
-  return ss.str();
-}
-
 
 /// UCI::square() converts a Square to a string in algebraic notation (g1, a7, etc.)
 
@@ -248,21 +183,6 @@ string UCI::move(Move m, bool chess960) {
   return move;
 }
 
-
-/// UCI::to_move() converts a string representing a move in coordinate notation
-/// (g1f3, a7a8q) to the corresponding legal Move, if any.
-
-Move UCI::to_move(const Position& pos, string& str) {
-
-  if (str.length() == 5)
-      str[4] = char(tolower(str[4])); // The promotion piece character must be lowercased
-
-  for (const auto& m : MoveList<LEGAL>(pos))
-      if (str == UCI::move(m, pos.is_chess960()))
-          return m;
-
-  return MOVE_NONE;
-}
 
 /// UCI::to_antichess_move() converts a string representing a move in coordinate notation
 /// (g1f3, a7a8q) to the corresponding legal Anti-Chess Move, if any.
