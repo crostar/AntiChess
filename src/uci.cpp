@@ -48,14 +48,9 @@ namespace {
     auto captureMoves = MoveList<CAPTURES>(pos);
     auto legalMoves = MoveList<LEGAL>(pos);
 
-    for (const auto& m : captureMoves) {
+    for (const auto& m : captureMoves)
         if (legalMoves.contains(m)) 
             rootMoves.emplace_back(m);
-    }
-
-    if (rootMoves.empty() && captureMoves.size() != 0) {
-        return captureMoves.begin()->move;
-    }
 
     if (rootMoves.empty())
         for (const auto& m : MoveList<LEGAL>(pos))
@@ -68,9 +63,9 @@ namespace {
 
   void make_initial_move(Position& pos, StateListPtr& states) {
     Move initial_move = start_thinking(pos);
-    sync_cout << UCI::move(initial_move, false) << sync_endl;
     states->emplace_back();
     pos.do_move(initial_move, states->back());
+    sync_cout << UCI::move(initial_move, false) << sync_endl;
   }
 
   // move_and_counter() is called when the engine receives a move string (e.g. d2d4)
@@ -83,9 +78,9 @@ namespace {
     pos.do_move(m, states->back());
 
     Move best_move = start_thinking(pos);
-    sync_cout << UCI::move(best_move, false) << sync_endl;
     states->emplace_back();
     pos.do_move(best_move, states->back());
+    sync_cout << UCI::move(best_move, false) << sync_endl;
   }
 } // namespace
 
@@ -99,7 +94,7 @@ namespace {
 void UCI::loop(int argc, char* argv[]) {
 
   Position pos;
-  string token, cmd;
+  string token;
   StateListPtr states(new std::deque<StateInfo>(1));
   Move m;
 
@@ -112,20 +107,17 @@ void UCI::loop(int argc, char* argv[]) {
   }
 
   do {
-      if (!getline(cin, cmd)) // Wait for an input or an end-of-file (EOF) indication
-          cmd = "quit";
-
-      istringstream is(cmd);
-
       token.clear(); // Avoid a stale if getline() returns nothing or a blank line
-      is >> skipws >> token;
 
-      if (token == "white" || token == "black") std::cout << "skip" << std::endl;
+      if (!getline(cin, token)) // Wait for an input or an end-of-file (EOF) indication
+          break;
+
+      if (token == "quit" || token == "q") break;
       else if ((m = UCI::to_antichess_move(pos, token)) != MOVE_NONE) move_and_counter(pos, m, states);
       else if (!token.empty() && token[0] != '#')
-          sync_cout << "Unknown command: '" << cmd << sync_endl;
+          sync_cout << "Invalid command: '" << token << sync_endl;
 
-  } while (token != "quit"); // The command-line arguments are one-shot
+  } while (true); // The command-line arguments are one-shot
 }
 
 
@@ -193,10 +185,6 @@ Move UCI::to_antichess_move(const Position& pos, string& str) {
       str[4] = char(tolower(str[4])); // The promotion piece character must be lowercased
 
   for (const auto& m : MoveList<LEGAL>(pos))
-      if (str == UCI::move(m, pos.is_chess960()))
-          return m;
-
-  for (const auto& m : MoveList<CAPTURES>(pos))
       if (str == UCI::move(m, pos.is_chess960()))
           return m;
 
