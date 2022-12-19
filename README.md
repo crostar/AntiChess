@@ -4,8 +4,7 @@ This project builds an AI for Antichess (not really intelligent) based on a rand
 ## Build
 ```{bash}
 cd src
-make net
-make build ARCH=x86-64-modern
+make build
 ```
 
 ## Run
